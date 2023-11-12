@@ -8,6 +8,7 @@ define('VersionKey', 'DefaultVersionKey');
 define('UseAuth', true);
 define('AuthCookieName', 'UCLoginCredential');
 define('AuthUserList', array('user1' => '')); // SHA1 Encrypt.
+define('AnonymousUsername', 'Anonymous');
 #function GetData(string $username): array|bool { // PHP 7 不支持联合类型.
 function GetData(string $username) {
 	if (SessionName !== null) {
@@ -79,7 +80,7 @@ if (SessionName !== null) {
 	}
 }
 $auth = (UseAuth ? false : true);
-$username = (UseAuth ? CheckUser() : 'Anonymous');
+$username = (UseAuth ? CheckUser() : AnonymousUsername);
 $tryLogout = (isset($_GET['logout']) && $_GET['logout'] === '1');
 $tryLogin = (UseAuth && !empty($_POST['username']));
 if ($tryLogout) {
@@ -116,32 +117,40 @@ if (!$tryLogin && strtoupper($_SERVER['REQUEST_METHOD']) === 'POST') {
 	$clientJSON = json_decode(file_get_contents('php://input'), true);
 	$clientVersion = $clientJSON['version'] ?? null;
 	$clientVersionHash = $clientJSON['version_hash'] ?? null;
-	$clientClipboard = isset($clientJSON['clipboard']) ? ($clientJSON['clipboard'] ?? null) : null;
-	$serverData = GetData($username);
-	$serverDataChanged = false;
+	$clientVersionHashCalc = (($clientVersionHash !== null) ? sha1(VersionKey . ($auth ? $username : AnonymousUsername) . $clientVersion . VersionKey) : null);
+	if ($clientVersionHash !== null && $clientVersionHash === $clientVersionHashCalc) {
+		$clientClipboard = isset($clientJSON['clipboard']) ? ($clientJSON['clipboard'] ?? null) : null;
+		$serverData = GetData($username);
+		$serverDataChanged = false;
+		$clientVersionChanged = false;
+	} else {
+		$serverData = array();
+	}
 	if (!isset($serverData['version']) || !isset($serverData['clipboard'])) {
 		$serverDataChanged = true;
+		$clientVersionChanged = true;
 		$serverData['version'] = 0;
 		$serverData['clipboard'] = '';
 	}
-	$serverVersionHash = sha1(VersionKey . ($auth ? $username : '') . $serverData['version'] . VersionKey);
-	$clientVersionChanged = false;
-	if ($clientVersion === null || $clientVersion === -1 || $clientVersionHash === null || $clientVersion !== $serverData['version'] || $clientVersionHash !== $serverVersionHash) { // 版本或 Hash 为空或不一致说明客户端在还没有更新内容前就落后或超前, 需要重新发回内容使客户端获得正确版本.
-		$clientVersionChanged = true;
-	} elseif ($clientClipboard !== null && $clientClipboard !== $serverData['clipboard']) { // 否则如果剪切板不为 null (允许空) 且内容被修改, 则进行更新.
-		$serverDataChanged = true;
-		$clientVersionChanged = true;
-		if ($serverData['version'] < 23333 && !empty($clientClipboard)) {
-			$serverData['version']++;
-		} else {
-			$serverData['version'] = 0;
+	$serverVersionHashCalc = ($clientVersion !== $serverData['version']) ? sha1(VersionKey . ($auth ? $username : AnonymousUsername) . $serverData['version'] . VersionKey) : $clientVersionHashCalc;
+	if (!$clientVersionChanged) {
+		if ($clientVersion === null || $clientVersion === -1 || $clientVersionHash === null || $clientVersion !== $serverData['version'] || $clientVersionHash !== $serverVersionHashCalc) { // 版本或 Hash 为空或不一致说明客户端在还没有更新内容前就落后或超前, 需要重新发回内容使客户端获得正确版本.
+			$clientVersionChanged = true;
+		} elseif ($clientClipboard !== null && $clientClipboard !== $serverData['clipboard']) { // 否则如果剪切板不为 null (允许空) 且内容被修改, 则进行更新.
+			$serverDataChanged = true;
+			$clientVersionChanged = true;
+			if ($serverData['version'] < 23333 && !empty($clientClipboard)) {
+				$serverData['version']++;
+			} else {
+				$serverData['version'] = 0;
+			}
+			$serverData['clipboard'] = $clientClipboard;
+			$serverVersionHashCalc = sha1(VersionKey . ($auth ? $username : AnonymousUsername) . $serverData['version'] . VersionKey);
 		}
-		$serverData['clipboard'] = $clientClipboard;
-		$serverVersionHash = sha1(VersionKey . ($auth ? $username : '') . $serverData['version'] . VersionKey);
 	}
 	// 将处理结果存储并重新发回给客户端, 且如果版本没有发生变化, 就不发送剪切板内容以节省带宽.
 	SaveData($username, ($serverDataChanged ? $serverData : null));
-	die(json_encode(array('version' => $serverData['version'], 'version_hash' => $serverVersionHash, 'clipboard' => ($clientVersionChanged ? $serverData['clipboard'] : null))));
+	die(json_encode(array('version' => $serverData['version'], 'version_hash' => $serverVersionHashCalc, 'clipboard' => ($clientVersionChanged ? $serverData['clipboard'] : null))));
 }
 ?>
 <!DOCTYPE html>
