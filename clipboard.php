@@ -3,17 +3,25 @@ define('Title', '通用剪切板');
 define('Interval', 1000);
 define('InputTimeout', 200); // 输入延迟, 用于去除连续输出抖动造成的体验下降.
 define('SessionName', 's'); // null 代表不使用.
+define('Expiration', 3600); // Seconds, 0 意味着不过期.
 define('VersionKey', 'DefaultVersionKey');
 define('UseAuth', true);
 define('AuthCookieName', 'UCLoginCredential');
-define('AuthUserList', array('user1' => '')); // SHA1 Encrypt
+define('AuthUserList', array('user1' => '')); // SHA1 Encrypt.
 #function GetData(string $username): array|bool { // PHP 7 不支持联合类型.
 function GetData(string $username) {
 	if (SessionName !== null) {
 		return $_SESSION;
 	}
-	$jsonContent = (is_file("UCJSON/{$username}.json") ? file_get_contents("UCJSON/{$username}.json") : false);
-	$jsonData = ($jsonContent !== false ? json_decode($jsonContent, true) : false);
+	$jsonData = false;
+	if (is_file("UCJSON/{$username}.json")) {
+		if (Expiration > 0 && ($jsonMTime = filemtime("UCJSON/{$username}.json")) !== false && (($jsonMTime + Expiration) < time())) {
+			unlink("UCJSON/{$username}.json");
+		} else {
+			$jsonContent = file_get_contents("UCJSON/{$username}.json");
+			$jsonData = ($jsonContent !== false ? json_decode($jsonContent, true) : false);
+		}
+	}
 	return ($jsonData ?? array());
 }
 function SaveData(string $username, ?array $data): bool {
@@ -52,7 +60,9 @@ if (SessionName !== null) {
 	ini_set('session.use_cookies', 0);
 	ini_set('session.use_trans_sid', 1);
 	ini_set('session.use_only_cookies', 0);
-	ini_set('session.gc_maxlifetime', 3600);
+	if (Expiration > 0) {
+		ini_set('session.gc_maxlifetime', Expiration);
+	}
 	if (!is_writable(session_save_path())) {
 	    die('Session path ' . session_save_path() . " is not writable for PHP!\n"); 
 	}
