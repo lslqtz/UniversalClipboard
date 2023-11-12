@@ -16,13 +16,18 @@ function GetData(string $username) {
 	$jsonData = ($jsonContent !== false ? json_decode($jsonContent, true) : false);
 	return ($jsonData ?? array());
 }
-function SaveData(string $username, array $data): bool {
+function SaveData(string $username, ?array $data): bool {
 	if (SessionName !== null) {
-		$_SESSION = $data;
+		if ($data !== null) {
+			$_SESSION = $data;
+		}
 		return true;
 	}
 	if (!is_dir('UCJSON') && !mkdir('UCJSON')) {
 		return false;
+	}
+	if ($data === null) {
+		return touch("UCJSON/{$username}.json");
 	}
 	$arrJSON = json_encode($data, JSON_NUMERIC_CHECK);
 	if ($arrJSON === false) {
@@ -95,16 +100,19 @@ if (!$tryLogin && strtoupper($_SERVER['REQUEST_METHOD']) === 'POST') {
 	$clientVersionHash = $clientJSON['version_hash'] ?? null;
 	$clientClipboard = isset($clientJSON['clipboard']) ? ($clientJSON['clipboard'] ?? null) : null;
 	$serverData = GetData($username);
+	$serverDataChanged = false;
 	if (!isset($serverData['version']) || !isset($serverData['clipboard'])) {
+		$serverDataChanged = true;
 		$serverData['version'] = 0;
 		$serverData['clipboard'] = '';
 	}
 	$serverVersionHash = sha1(VersionKey . ($auth ? $username : '') . $serverData['version'] . VersionKey);
-	$versionChanged = false;
+	$clientVersionChanged = false;
 	if ($clientVersion === null || $clientVersion === -1 || $clientVersionHash === null || $clientVersion !== $serverData['version'] || $clientVersionHash !== $serverVersionHash) { // 版本或 Hash 为空或不一致说明客户端在还没有更新内容前就落后或超前, 需要重新发回内容使客户端获得正确版本.
-		$versionChanged = true;
+		$clientVersionChanged = true;
 	} elseif ($clientClipboard !== null && $clientClipboard !== $serverData['clipboard']) { // 否则如果剪切板不为 null (允许空) 且内容被修改, 则进行更新.
-		$versionChanged = true;
+		$serverDataChanged = true;
+		$clientVersionChanged = true;
 		if ($serverData['version'] < 23333 && !empty($clientClipboard)) {
 			$serverData['version']++;
 		} else {
@@ -114,8 +122,8 @@ if (!$tryLogin && strtoupper($_SERVER['REQUEST_METHOD']) === 'POST') {
 		$serverVersionHash = sha1(VersionKey . ($auth ? $username : '') . $serverData['version'] . VersionKey);
 	}
 	// 将处理结果存储并重新发回给客户端, 且如果版本没有发生变化, 就不发送剪切板内容以节省带宽.
-	SaveData($username, $serverData);
-	die(json_encode(array('version' => $serverData['version'], 'version_hash' => $serverVersionHash, 'clipboard' => ($versionChanged ? $serverData['clipboard'] : null))));
+	SaveData($username, ($serverDataChanged ? $serverData : null));
+	die(json_encode(array('version' => $serverData['version'], 'version_hash' => $serverVersionHash, 'clipboard' => ($clientVersionChanged ? $serverData['clipboard'] : null))));
 }
 ?>
 <!DOCTYPE html>
