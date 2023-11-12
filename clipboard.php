@@ -43,12 +43,16 @@ function SaveData(string $username, ?array $data): bool {
 	}
 	return file_put_contents("UCJSON/{$username}.json", "{$arrJSON}\n");
 }
-#function CheckUser(): string|bool { // PHP 7 不支持联合类型.
+#function CheckUser(): string|int { // PHP 7 不支持联合类型.
 function CheckUser() {
-	if (isset($_COOKIE[AuthCookieName]) && count(($userArr = explode(':', $_COOKIE[AuthCookieName], 2))) === 2 && isset(AuthUserList[$userArr[0]]) && AuthUserList[$userArr[0]] === $userArr[1]) {
-		return $userArr[0];
+	if (isset($_COOKIE[AuthCookieName])) {
+		if (count(($userArr = explode(':', $_COOKIE[AuthCookieName], 2))) === 2 && isset(AuthUserList[$userArr[0]]) && AuthUserList[$userArr[0]] === $userArr[1]) {
+			return $userArr[0];
+		} else {
+			return -1;
+		}
 	}
-	return false;
+	return -2;
 }
 function CheckLogin(string $username, string $password): bool {
 	if (isset(AuthUserList[$username]) && (empty(AuthUserList[$username]) || (!empty($password) && AuthUserList[$username] === sha1($password)))) {
@@ -76,18 +80,22 @@ if (SessionName !== null) {
 }
 $auth = (UseAuth ? false : true);
 $username = (UseAuth ? CheckUser() : 'Anonymous');
+$tryLogout = (isset($_GET['logout']) && $_GET['logout'] === '1');
 $tryLogin = (UseAuth && !empty($_POST['username']));
-if ($username !== false) {
-	$auth = true;
-	if (isset($_GET['logout']) && $_GET['logout'] === '1') {
-		if (UseAuth) {
+if ($tryLogout) {
+	if (UseAuth) {
+		setcookie(AuthCookieName, '', time() - 1, '/', '', false, true);
+	}
+	header("Location: {$_SERVER['SCRIPT_NAME']}" . ((SessionName !== null) ? ("?" . SessionName . "={$sessionID}") : ''), true, 302);
+	die();
+} else {
+	if ($username === -1) {
+		if (!$tryLogin) {
 			setcookie(AuthCookieName, '', time() - 1, '/', '', false, true);
 		}
-		header("Location: {$_SERVER['SCRIPT_NAME']}" . ((SessionName !== null) ? ("?" . SessionName . "={$sessionID}") : ''), true, 302);
-		die();
+	} elseif ($username !== -2) {
+		$auth = true;
 	}
-} elseif (!$tryLogin) {
-	setcookie(AuthCookieName, '', time() - 1, '/', '', false, true);
 }
 if ($tryLogin) {
 	if ($auth) {
@@ -219,7 +227,7 @@ if (!$tryLogin && strtoupper($_SERVER['REQUEST_METHOD']) === 'POST') {
 				<label for="username">账号: </label>
 	    			<input type="text" id="username" name="username" required>
 	    			<label for="password">密码: </label>
-	    			<input type="password" id="password" name="password" required>
+	    			<input type="password" id="password" name="password">
 	    			<button>登录</button>
 	    		</div>
 	    	</form>
