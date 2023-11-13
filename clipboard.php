@@ -6,6 +6,7 @@ define('SessionName', 's'); // null 代表不使用.
 define('Expiration', 3600); // Seconds, 0 意味着不过期.
 define('VersionKey', 'DefaultVersionKey');
 define('UseAuth', true);
+define('VerifyClientVersionHash', true); // 校验客户端 Hash 可使 VersionKey 更改后废弃所有用户之前的剪切板, 可能可以防止 Session 模式下的剪切板跨账号访问 (但可能会导致内容清空).
 define('AuthCookieName', 'UCLoginCredential');
 define('AuthUserList', array('user1' => '')); // SHA1 Encrypt.
 define('AnonymousUsername', 'Anonymous');
@@ -117,7 +118,7 @@ if (!$tryLogin && strtoupper($_SERVER['REQUEST_METHOD']) === 'POST') {
 	$clientJSON = json_decode(file_get_contents('php://input'), true);
 	$clientVersion = $clientJSON['version'] ?? null;
 	$clientVersionHash = $clientJSON['version_hash'] ?? null;
-	$clientVersionHashCalc = (($clientVersionHash !== null) ? sha1(VersionKey . ($auth ? $username : AnonymousUsername) . $clientVersion . VersionKey) : null);
+	$clientVersionHashCalc = (VerifyClientVersionHash ? ((($clientVersionHash !== null) ? sha1(VersionKey . ($auth ? $username : AnonymousUsername) . $clientVersion . VersionKey) : null)) : $clientVersionHash);
 	if ($clientVersionHash !== null && $clientVersionHash === $clientVersionHashCalc) {
 		$clientClipboard = isset($clientJSON['clipboard']) ? ($clientJSON['clipboard'] ?? null) : null;
 		$serverData = GetData($username);
