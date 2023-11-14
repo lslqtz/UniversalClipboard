@@ -1,3 +1,6 @@
+a, p, h1, h2, h3, h4, h5, h6, input, button, label, legend, fieldset, textarea, .content {
+	font-family: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Hiragino Sans GB", "Heiti SC", "Microsoft YaHei", "WenQuanYi Micro Hei", sans-serif;
+}
 @media (prefers-color-scheme: dark) {
 	html {
 		background-color: #000;
