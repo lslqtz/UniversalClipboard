@@ -1,0 +1,17 @@
+@media (prefers-color-scheme: dark) {
+	html {
+		background-color: #000;
+	}
+	input[type="checkbox"] {
+		filter: invert(80%) hue-rotate(180deg) brightness(1.5);
+	}
+	p, h1, label, input, button, input[type="file"]::file-selector-button, textarea {
+		color: #fff;
+	}
+	button, input[type="text"], input[type="password"], input[type="file"]::file-selector-button {
+		background-color: #666;
+	}
+	textarea {
+		background-color: #333;
+	}
+}
