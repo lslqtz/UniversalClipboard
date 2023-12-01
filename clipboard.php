@@ -1,6 +1,6 @@
 <?php
 define('Title', '通用剪切板');
-define('Interval', 1000);
+define('Interval', 300);
 define('InputTimeout', 200); // 输入延迟, 用于去除连续输出抖动造成的体验下降.
 define('SessionName', 's'); // null 代表不使用.
 define('Expiration', 3600); // Seconds, 0 意味着不过期.
@@ -8,11 +8,12 @@ define('VersionKey', 'DefaultVersionKey');
 define('UseAuth', true);
 define('VerifyClientVersionHash', true); // 校验客户端 Hash 可使 VersionKey 更改后废弃所有用户之前的剪切板, 可能可以防止 Session 模式下的剪切板跨账号访问 (但可能会导致内容清空).
 define('AuthCookieName', 'UCLoginCredential');
-define('AuthUserList', array('user1' => '')); // SHA1 Encrypt.
+define('AuthUserList', array('user1' => array('password' => ''), 'user2' => array('password' => '', 'sessionName' => null), 'user3' => array('password' => '0b7f849446d3383546d15a480966084442cd2193' /* user3 */, 'sessionName' => 'session'))); // SHA1 Encrypt
 define('AnonymousUsername', 'Anonymous');
 #function GetData(string $username): array|bool { // PHP 7 不支持联合类型.
 function GetData(string $username) {
-	if (SessionName !== null) {
+	global $sessionName;
+	if ($sessionName !== null) {
 		return $_SESSION;
 	}
 	$jsonData = false;
@@ -27,7 +28,8 @@ function GetData(string $username) {
 	return ($jsonData ?? array());
 }
 function SaveData(string $username, ?array $data): bool {
-	if (SessionName !== null) {
+	global $sessionName;
+	if ($sessionName !== null) {
 		if ($data !== null) {
 			$_SESSION = $data;
 		}
@@ -48,7 +50,7 @@ function SaveData(string $username, ?array $data): bool {
 #function CheckUser(): string|int { // PHP 7 不支持联合类型.
 function CheckUser() {
 	if (isset($_COOKIE[AuthCookieName])) {
-		if (count(($userArr = explode(':', $_COOKIE[AuthCookieName], 2))) === 2 && isset(AuthUserList[$userArr[0]]) && AuthUserList[$userArr[0]] === $userArr[1]) {
+		if (count(($userArr = explode(':', $_COOKIE[AuthCookieName], 2))) === 2 && (empty(AuthUserList[$username]['password']) || (!empty($userArr[1]) && AuthUserList[$userArr[0]]['password'] === $userArr[1]))) {
 			return $userArr[0];
 		} else {
 			return -1;
@@ -57,12 +59,15 @@ function CheckUser() {
 	return -2;
 }
 function CheckLogin(string $username, string $password): bool {
-	if (isset(AuthUserList[$username]) && (empty(AuthUserList[$username]) || (!empty($password) && AuthUserList[$username] === sha1($password)))) {
+	if (empty(AuthUserList[$username]['password']) || (!empty($password) && AuthUserList[$username]['password'] === sha1($password))) {
 		return true;
 	}
 	return false;
 }
-if (SessionName !== null) {
+$auth = (UseAuth ? false : true);
+$username = (UseAuth ? CheckUser() : AnonymousUsername);
+$sessionName = ((array_key_exists('sessionName', AuthUserList[$username])) ? AuthUserList[$username]['sessionName'] : SessionName);
+if ($sessionName !== null) {
 	ini_set('session.use_cookies', 0);
 	ini_set('session.use_trans_sid', 1);
 	ini_set('session.use_only_cookies', 0);
@@ -72,23 +77,21 @@ if (SessionName !== null) {
 	if (!is_writable(session_save_path())) {
 	    die('Session path ' . session_save_path() . " is not writable for PHP!\n"); 
 	}
-	session_name(SessionName);
+	session_name($sessionName);
 	session_start();
 	$sessionID = session_id();
-	if (!isset($_GET[SessionName]) || $_GET[SessionName] !== $sessionID) {
-		header("Location: {$_SERVER['SCRIPT_NAME']}?" . SessionName . "={$sessionID}", true, 302);
+	if (!isset($_GET[$sessionName]) || $_GET[$sessionName] !== $sessionID) {
+		header("Location: {$_SERVER['SCRIPT_NAME']}?" . $sessionName . "={$sessionID}", true, 302);
 		die();
 	}
 }
-$auth = (UseAuth ? false : true);
-$username = (UseAuth ? CheckUser() : AnonymousUsername);
 $tryLogout = (isset($_GET['logout']) && $_GET['logout'] === '1');
 $tryLogin = (UseAuth && !empty($_POST['username']));
 if ($tryLogout) {
 	if (UseAuth) {
 		setcookie(AuthCookieName, '', time() - 1, '/', '', false, true);
 	}
-	header("Location: {$_SERVER['SCRIPT_NAME']}" . ((SessionName !== null) ? ("?" . SessionName . "={$sessionID}") : ''), true, 302);
+	header("Location: {$_SERVER['SCRIPT_NAME']}" . (($sessionName !== null) ? ("?" . $sessionName . "={$sessionID}") : ''), true, 302);
 	die();
 } else {
 	if ($username === -1) {
@@ -103,7 +106,7 @@ if ($tryLogin) {
 	if ($auth) {
 		$loginMessage = '您当前已登录!';
 	} elseif (($auth = CheckLogin($_POST['username'], $_POST['password']))) {
-		setcookie(AuthCookieName, $_POST['username'] . ':' . AuthUserList[$_POST['username']], time() + 2592000, '/', '', false, true);
+		setcookie(AuthCookieName, $_POST['username'] . ':' . AuthUserList[$_POST['username']]['password'], time() + 2592000, '/', '', false, true);
 		$username = $_POST['username'];
 		$loginMessage = '登录成功!';
 	} else {
@@ -119,19 +122,25 @@ if (!$tryLogin && strtoupper($_SERVER['REQUEST_METHOD']) === 'POST') {
 	$clientVersion = $clientJSON['version'] ?? null;
 	$clientVersionHash = $clientJSON['version_hash'] ?? null;
 	$clientVersionHashCalc = (VerifyClientVersionHash ? ((($clientVersionHash !== null) ? sha1(VersionKey . ($auth ? $username : AnonymousUsername) . $clientVersion . VersionKey) : null)) : $clientVersionHash);
-	if ($clientVersionHash !== null && $clientVersionHash === $clientVersionHashCalc) {
-		$clientClipboard = isset($clientJSON['clipboard']) ? ($clientJSON['clipboard'] ?? null) : null;
+	if ($clientVersion !== -1) {
+		if ($clientVersionHash !== null && $clientVersionHash === $clientVersionHashCalc) {
+			$clientClipboard = isset($clientJSON['clipboard']) ? ($clientJSON['clipboard'] ?? null) : null;
+			$serverData = GetData($username);
+			$serverDataChanged = false;
+			$clientVersionChanged = false;
+		} else {
+			$serverData = array();
+		}
+	} else {
 		$serverData = GetData($username);
 		$serverDataChanged = false;
-		$clientVersionChanged = false;
-	} else {
-		$serverData = array();
+		$clientVersionChanged = true;
 	}
 	if (!isset($serverData['version']) || !isset($serverData['clipboard'])) {
-		$serverDataChanged = true;
-		$clientVersionChanged = true;
 		$serverData['version'] = 0;
 		$serverData['clipboard'] = '';
+		$serverDataChanged = true;
+		$clientVersionChanged = true;
 	}
 	$serverVersionHashCalc = ($clientVersion !== $serverData['version']) ? sha1(VersionKey . ($auth ? $username : AnonymousUsername) . $serverData['version'] . VersionKey) : $clientVersionHashCalc;
 	if (!$clientVersionChanged) {
