@@ -64,9 +64,10 @@ function CheckLogin(string $username, string $password): bool {
 	}
 	return false;
 }
-$auth = (UseAuth ? false : true);
+$isPOST = (strtoupper($_SERVER['REQUEST_METHOD']) === 'POST');
 $username = (UseAuth ? CheckUser() : AnonymousUsername);
 $sessionName = ((array_key_exists('sessionName', AuthUserList[$username])) ? AuthUserList[$username]['sessionName'] : SessionName);
+$tryLogout = (isset($_GET['logout']) && $_GET['logout'] === '1');
 if ($sessionName !== null) {
 	ini_set('session.use_cookies', 0);
 	ini_set('session.use_trans_sid', 1);
@@ -84,8 +85,11 @@ if ($sessionName !== null) {
 		header("Location: {$_SERVER['SCRIPT_NAME']}?" . $sessionName . "={$sessionID}", true, 302);
 		die();
 	}
+} else if (!$tryLogout && count($_GET) > 0 && !$isPOST) {
+	header("Location: {$_SERVER['SCRIPT_NAME']}", true, 302);
+	die();
 }
-$tryLogout = (isset($_GET['logout']) && $_GET['logout'] === '1');
+$auth = (UseAuth ? false : true);
 $tryLogin = (UseAuth && !empty($_POST['username']));
 if ($tryLogout) {
 	if (UseAuth) {
@@ -113,7 +117,7 @@ if ($tryLogin) {
 		$loginMessage = '账号/密码不正确, 请检查后再试!';
 	}
 }
-if (!$tryLogin && strtoupper($_SERVER['REQUEST_METHOD']) === 'POST') {
+if (!$tryLogin && $isPOST) {
 	header('Content-Type: application/json');
 	if (!$auth) {
 		die(json_encode(array('version' => -2)));
