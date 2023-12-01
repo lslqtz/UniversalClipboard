@@ -8,17 +8,17 @@ define('VersionKey', 'DefaultVersionKey');
 define('UseAuth', true);
 define('VerifyClientVersionHash', true); // 校验客户端 Hash 可使 VersionKey 更改后废弃所有用户之前的剪切板, 可能可以防止 Session 模式下的剪切板跨账号访问 (但可能会导致内容清空).
 define('AuthCookieName', 'UCLoginCredential');
-define('AuthUserList', array('user1' => array('password' => ''), 'user2' => array('password' => '', 'sessionName' => null), 'user3' => array('password' => '0b7f849446d3383546d15a480966084442cd2193' /* user3 */, 'sessionName' => 'session'))); // SHA1 Encrypt
+define('AuthUserList', array('user1' => array('password' => ''), 'user2' => array('password' => '', 'sessionName' => null), 'user3' => array('password' => '0b7f849446d3383546d15a480966084442cd2193' /* user3 */, 'sessionName' => 'session', 'expiration' => 86400))); // SHA1 Encrypt
 define('AnonymousUsername', 'Anonymous');
 #function GetData(string $username): array|bool { // PHP 7 不支持联合类型.
 function GetData(string $username) {
-	global $sessionName;
-	if ($sessionName !== null) {
+	global $userSessionName, $userExpiration;
+	if ($userSessionName !== null) {
 		return $_SESSION;
 	}
 	$jsonData = false;
 	if (is_file("UCJSON/{$username}.json")) {
-		if (Expiration > 0 && ($jsonMTime = filemtime("UCJSON/{$username}.json")) !== false && (($jsonMTime + Expiration) < time())) {
+		if ($userExpiration > 0 && ($jsonMTime = filemtime("UCJSON/{$username}.json")) !== false && (($jsonMTime + $userExpiration) < time())) {
 			unlink("UCJSON/{$username}.json");
 		} else {
 			$jsonContent = file_get_contents("UCJSON/{$username}.json");
@@ -28,8 +28,8 @@ function GetData(string $username) {
 	return ($jsonData ?? array());
 }
 function SaveData(string $username, ?array $data): bool {
-	global $sessionName;
-	if ($sessionName !== null) {
+	global $userSessionName;
+	if ($userSessionName !== null) {
 		if ($data !== null) {
 			$_SESSION = $data;
 		}
@@ -66,23 +66,24 @@ function CheckLogin(string $username, string $password): bool {
 }
 $isPOST = (strtoupper($_SERVER['REQUEST_METHOD']) === 'POST');
 $username = (UseAuth ? CheckUser() : AnonymousUsername);
-$sessionName = ((array_key_exists('sessionName', AuthUserList[$username])) ? AuthUserList[$username]['sessionName'] : SessionName);
+$userSessionName = ((array_key_exists('sessionName', AuthUserList[$username])) ? AuthUserList[$username]['sessionName'] : SessionName);
+$userExpiration = (($userSessionName === null && array_key_exists('expiration', AuthUserList[$username])) ? AuthUserList[$username]['expiration'] : Expiration); // 不允许 Session 模式下自定义过期时间, 以避免不确定行为.
 $tryLogout = (isset($_GET['logout']) && $_GET['logout'] === '1');
-if ($sessionName !== null) {
+if ($userSessionName !== null) {
 	ini_set('session.use_cookies', 0);
 	ini_set('session.use_trans_sid', 1);
 	ini_set('session.use_only_cookies', 0);
-	if (Expiration > 0) {
-		ini_set('session.gc_maxlifetime', Expiration);
+	if ($userExpiration > 0) {
+		ini_set('session.gc_maxlifetime', $userExpiration);
 	}
 	if (!is_writable(session_save_path())) {
 	    die('Session path ' . session_save_path() . " is not writable for PHP!\n"); 
 	}
-	session_name($sessionName);
+	session_name($userSessionName);
 	session_start();
 	$sessionID = session_id();
-	if (!isset($_GET[$sessionName]) || $_GET[$sessionName] !== $sessionID) {
-		header("Location: {$_SERVER['SCRIPT_NAME']}?" . $sessionName . "={$sessionID}", true, 302);
+	if (!isset($_GET[$userSessionName]) || $_GET[$userSessionName] !== $sessionID) {
+		header("Location: {$_SERVER['SCRIPT_NAME']}?" . $userSessionName . "={$sessionID}", true, 302);
 		die();
 	}
 } else if (!$tryLogout && count($_GET) > 0 && !$isPOST) {
@@ -95,7 +96,7 @@ if ($tryLogout) {
 	if (UseAuth) {
 		setcookie(AuthCookieName, '', time() - 1, '/', '', false, true);
 	}
-	header("Location: {$_SERVER['SCRIPT_NAME']}" . (($sessionName !== null) ? ("?" . $sessionName . "={$sessionID}") : ''), true, 302);
+	header("Location: {$_SERVER['SCRIPT_NAME']}" . (($userSessionName !== null) ? ("?" . $userSessionName . "={$sessionID}") : ''), true, 302);
 	die();
 } else {
 	if ($username === -1) {
