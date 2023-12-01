@@ -125,15 +125,15 @@ if (!$tryLogin && $isPOST) {
 	$clientVersionHash = $clientJSON['version_hash'] ?? null;
 	$clientVersionHashCalc = (VerifyClientVersionHash ? ((($clientVersionHash !== null) ? sha1(VersionKey . ($auth ? $username : AnonymousUsername) . $clientVersion . VersionKey) : null)) : $clientVersionHash);
 	if ($clientVersion !== -1) {
-		if ($clientVersionHash !== null && $clientVersionHash === $clientVersionHashCalc) {
+		if ($clientVersion !== null && $clientVersionHash !== null && $clientVersionHash === $clientVersionHashCalc) {
 			$clientClipboard = isset($clientJSON['clipboard']) ? ($clientJSON['clipboard'] ?? null) : null;
 			$serverData = GetData($username);
 			$serverDataChanged = false;
 			$clientVersionChanged = false;
-		} else {
+		} else { // 版本不为 -1 说明可能是篡改或主动重设 VersionKey, 故清空剪切板.
 			$serverData = array();
 		}
-	} else {
+	} else { // 版本为 -1 说明客户端正在初始化, 直接发回内容使客户端获得当前版本.
 		$serverData = GetData($username);
 		$serverDataChanged = false;
 		$clientVersionChanged = true;
@@ -146,7 +146,7 @@ if (!$tryLogin && $isPOST) {
 	}
 	$serverVersionHashCalc = ($clientVersion !== $serverData['version']) ? sha1(VersionKey . ($auth ? $username : AnonymousUsername) . $serverData['version'] . VersionKey) : $clientVersionHashCalc;
 	if (!$clientVersionChanged) {
-		if ($clientVersion === null || $clientVersion === -1 || $clientVersionHash === null || $clientVersion !== $serverData['version'] || $clientVersionHash !== $serverVersionHashCalc) { // 版本或 Hash 为空或不一致说明客户端在还没有更新内容前就落后或超前, 需要重新发回内容使客户端获得正确版本.
+		if ($clientVersion !== $serverData['version'] || $clientVersionHash !== $serverVersionHashCalc) { // 版本或 Hash 不一致说明客户端在还没有更新内容前就落后或超前, 需要重新发回内容使客户端获得正确版本.
 			$clientVersionChanged = true;
 		} elseif ($clientClipboard !== null && $clientClipboard !== $serverData['clipboard']) { // 否则如果剪切板不为 null (允许空) 且内容被修改, 则进行更新.
 			$serverDataChanged = true;
