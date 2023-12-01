@@ -65,10 +65,35 @@ function CheckLogin(string $username, string $password): bool {
 	return false;
 }
 $isPOST = (strtoupper($_SERVER['REQUEST_METHOD']) === 'POST');
+$auth = (UseAuth ? false : true);
 $username = (UseAuth ? CheckUser() : AnonymousUsername);
-$userSessionName = ((array_key_exists('sessionName', AuthUserList[$username])) ? AuthUserList[$username]['sessionName'] : SessionName);
-$userExpiration = (($userSessionName === null && array_key_exists('expiration', AuthUserList[$username])) ? AuthUserList[$username]['expiration'] : Expiration); // 不允许 Session 模式下自定义过期时间, 以避免不确定行为.
 $tryLogout = (isset($_GET['logout']) && $_GET['logout'] === '1');
+$tryLogin = (UseAuth && !empty($_POST['username']));
+if ($tryLogout) {
+	if (UseAuth) {
+		setcookie(AuthCookieName, '', time() - 1, '/', '', false, true);
+	}
+	header("Location: {$_SERVER['SCRIPT_NAME']}", true, 302);
+	die();
+} else {
+	if ($username === -1) {
+		if (!$tryLogin) {
+			setcookie(AuthCookieName, '', time() - 1, '/', '', false, true);
+		}
+	} elseif ($username !== -2) {
+		$auth = true;
+	}
+}
+if ($tryLogin && !$auth) {
+	if (($auth = CheckLogin($_POST['username'], $_POST['password']))) {
+		setcookie(AuthCookieName, $_POST['username'] . ':' . AuthUserList[$_POST['username']]['password'], time() + 2592000, '/', '', false, true);
+		$username = $_POST['username'];
+	} else {
+		$loginMessage = '账号/密码不正确, 请检查后再试!';
+	}
+}
+$userSessionName = ($auth ? (array_key_exists('sessionName', AuthUserList[$username]) ? AuthUserList[$username]['sessionName'] : SessionName) : null);
+$userExpiration = (($userSessionName === null && array_key_exists('expiration', AuthUserList[$username])) ? AuthUserList[$username]['expiration'] : Expiration); // 不允许 Session 模式下自定义过期时间, 以避免不确定行为.
 if ($userSessionName !== null) {
 	ini_set('session.use_cookies', 0);
 	ini_set('session.use_trans_sid', 1);
@@ -86,37 +111,9 @@ if ($userSessionName !== null) {
 		header("Location: {$_SERVER['SCRIPT_NAME']}?" . $userSessionName . "={$sessionID}", true, 302);
 		die();
 	}
-} else if (!$tryLogout && count($_GET) > 0 && !$isPOST) {
+} else if (count($_GET) > 0 && !$isPOST) {
 	header("Location: {$_SERVER['SCRIPT_NAME']}", true, 302);
 	die();
-}
-$auth = (UseAuth ? false : true);
-$tryLogin = (UseAuth && !empty($_POST['username']));
-if ($tryLogout) {
-	if (UseAuth) {
-		setcookie(AuthCookieName, '', time() - 1, '/', '', false, true);
-	}
-	header("Location: {$_SERVER['SCRIPT_NAME']}" . (($userSessionName !== null) ? ("?" . $userSessionName . "={$sessionID}") : ''), true, 302);
-	die();
-} else {
-	if ($username === -1) {
-		if (!$tryLogin) {
-			setcookie(AuthCookieName, '', time() - 1, '/', '', false, true);
-		}
-	} elseif ($username !== -2) {
-		$auth = true;
-	}
-}
-if ($tryLogin) {
-	if ($auth) {
-		$loginMessage = '您当前已登录!';
-	} elseif (($auth = CheckLogin($_POST['username'], $_POST['password']))) {
-		setcookie(AuthCookieName, $_POST['username'] . ':' . AuthUserList[$_POST['username']]['password'], time() + 2592000, '/', '', false, true);
-		$username = $_POST['username'];
-		$loginMessage = '登录成功!';
-	} else {
-		$loginMessage = '账号/密码不正确, 请检查后再试!';
-	}
 }
 if (!$tryLogin && $isPOST) {
 	header('Content-Type: application/json');
