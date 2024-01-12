@@ -15,3 +15,12 @@
 7. 通过修改 VersionKey, 可以废弃所有用户的之前剪切板;
 
 注: 这一剪切板的设计目的是个人及小规模使用. 该工具的密码存储及传输使用未加盐 SHA1, 不建议使用重要密码. SessionName 如为 null, 则以 JSON 模式存储用户数据, 否则其字符串决定其字面意思. 过期及废弃剪切板并不意味着丢弃, 由于没有计划任务的实现, Session 模式下 PHP 本身会触发基于概率的回收, JSON 模式下只有在访问用户数据时才会检查是否过期.
+
+## 接口:
+POST /clipboard.php 或 POST /clipboard.php?{SessionName}={SessionID}
+Content-Type: application/json
+
+首次访问/初始化
+{"version": -1, "version_hash": null, "clipboard": null}
+
+再次访问须使用已获得的 version 及 version_hash, 并传递客户端当前剪切板内容, 如无变化 clipboard 将为 null, 有变化即获得下一版本, 应当储存它.
