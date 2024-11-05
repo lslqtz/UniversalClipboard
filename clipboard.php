@@ -50,7 +50,7 @@ function SaveData(string $username, ?array $data): bool {
 #function CheckUser(): string|int { // PHP 7 不支持联合类型.
 function CheckUser() {
 	if (isset($_COOKIE[AuthCookieName])) {
-		if (count(($userArr = explode(':', $_COOKIE[AuthCookieName], 2))) === 2 && (empty(AuthUserList[$username]['password']) || (!empty($userArr[1]) && AuthUserList[$userArr[0]]['password'] === $userArr[1]))) {
+		if (count(($userArr = explode(':', $_COOKIE[AuthCookieName], 2))) === 2 && (empty(AuthUserList[$userArr[0]]['password']) || (!empty($userArr[1]) && AuthUserList[$userArr[0]]['password'] === $userArr[1]))) {
 			return $userArr[0];
 		} else {
 			return -1;
