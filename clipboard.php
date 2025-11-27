@@ -154,7 +154,7 @@ if (!$tryLogin && $isPOST) {
 			if ($serverData['version'] < 23333 && !empty($clientClipboard)) {
 				$serverData['version']++;
 			} else {
-				$serverData['version'] = 0;
+				$serverData['version'] = 1;
 			}
 			$serverData['clipboard'] = $clientClipboard;
 			$serverVersionHashCalc = sha1(VersionKey . ($auth ? $username : AnonymousUsername) . $serverData['version'] . VersionKey);
@@ -181,9 +181,9 @@ if (!$tryLogin && $isPOST) {
 				l = window.matchMedia('(prefers-color-scheme: light)').matches;
 				qrcode = new QRCode('qrcode', {'text': location.href, 'width': clientTextarea.scrollHeight, 'height': clientTextarea.scrollHeight, 'colorLight': (l ? '#fff' : '#666'), 'colorDark': '#000', 'correctLevel': QRCode.CorrectLevel.H});
 			}
-			function reqListener() {
-				if (this.responseText == null || this.responseText.length <= 0) {
-					isRequesting = false;
+			function reqLoadListener() {
+				if (this.status !== 200 || this.responseText == null || this.responseText.length <= 0) {
+					clientStatus.innerText = '状态: 响应错误.';
 					return;
 				}
 				json = JSON.parse(this.responseText);
@@ -201,7 +201,18 @@ if (!$tryLogin && $isPOST) {
 						clientTextarea.value = json.clipboard;
 					}
 				}
+			}
+			function reqLoadEndListener() {
 				isRequesting = false;
+			}
+			function reqErrorListener() {
+    			clientStatus.innerText = '状态: 请求错误.';
+			}
+			function reqTimeoutListener() {
+    			clientStatus.innerText = '状态: 请求超时.';
+			}
+			function reqAbortListener() {
+    			clientStatus.innerText = '状态: 请求中断.';
 			}
 			function sync() {
 				if (isInputting || isRequesting) {
@@ -224,7 +235,11 @@ if (!$tryLogin && $isPOST) {
 					window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', remakeQRCodeByColorScheme);
 				}
 				req = new XMLHttpRequest();
-				req.addEventListener('load', reqListener);
+				req.addEventListener('load', reqLoadListener);
+				req.addEventListener('loadend', reqLoadEndListener);
+				req.addEventListener('error', reqErrorListener);
+				req.addEventListener('timeout', reqTimeoutListener);
+				req.addEventListener('abort', reqAbortListener);
 				req.timeout = <?php echo Interval; ?>;
 				clientTextarea.addEventListener('input', function() {
 					isInputting = true;
